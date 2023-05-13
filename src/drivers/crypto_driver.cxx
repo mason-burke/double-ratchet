@@ -249,3 +249,47 @@ bool CryptoDriver::HMAC_verify(SecByteBlock key, std::string ciphertext,
     return false;
   }
 }
+
+/**
+ * @brief Returns a pair (32-byte root key, 32-byte chain key) as the output of applying a KDF 
+ * keyed by a 32-byte root key to a Diffie-Hellman output.
+ * @param rk 32-byte root key
+ * @param dh_shared_key Diffie-Hellman output //todo: verify that it's the shared key
+ * @return pair of root key and chain key
+*/
+std::pair<SecByteBlock, SecByteBlock> CryptoDriver::KDF_RK(SecByteBlock rk, SecByteBlock dh_shared_key) {
+  // todo: write
+}
+
+/**
+ * @brief Returns a pair (32-byte chain key, 32-byte message key) as the output of applying
+ * a KDF keyed by a 32-byte chain key to some constant.
+ * @param ck 32-byte chain key
+ * @return pair of chain key and message key
+*/
+std::pair<SecByteBlock, SecByteBlock> CryptoDriver::KDF_CK(SecByteBlock ck) {
+  // todo: write
+}
+
+/**
+ * @brief Creates a new message header containing the DH ratchet public key from the key pair,
+ * the previous chain length pn, and the message number n. 
+ * @param dh_pair Diffie-Hellman ratchet pair
+ * @param pn previous chain length
+ * @param n message number
+ * @return The returned header object contains ratchet public key dh and integers pn and n.
+*/
+SecByteBlock make_header(std::pair<SecByteBlock, SecByteBlock> dh_pair, CryptoPP::Integer pn, CryptoPP::Integer n) {
+  // todo: write
+}
+
+/**
+ * @brief Encodes a message header into a parseable byte sequence, prepends the ad byte sequence,
+ * and returns the result. If ad is not guaranteed to be a parseable byte sequence, a length value
+ * should be prepended to the output to ensure that the output is parseable as a unique pair (ad, header).
+ * @param ad ad byte sequence //todo: figure out what this is
+ * @param header message header, output of make_header
+*/
+SecByteBlock concat_ad_header(SecByteBlock ad, SecByteBlock header) {
+  // todo: write
+}

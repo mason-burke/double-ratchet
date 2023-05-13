@@ -2,6 +2,7 @@
 
 #include <iostream>
 #include <mutex>
+#include <map>
 
 #include <boost/chrono.hpp>
 #include <boost/thread.hpp>
@@ -48,4 +49,22 @@ private:
   SecByteBlock DH_current_private_value;
   SecByteBlock DH_current_public_value;
   SecByteBlock DH_last_other_public_value;
+
+  // Double Ratchet
+  // root key
+  SecByteBlock RK;
+  // chain keys for sending
+  SecByteBlock CKs;
+  // message number for sending
+  CryptoPP::Integer Ns;
+  // chain keys for receiving
+  std::vector<SecByteBlock> CKr;
+  // message number for sending
+  CryptoPP::Integer Nr;
+  // number of messages in previous sending chain
+  CryptoPP::Integer PN;
+  // dictionary of skipped-over message keys, indexed by ratchet public key 
+  // and message number. Raises an exception if too many elements are stored.
+  // should be double mapping, see 3.2
+  std::map<SecByteBlock, SecByteBlock> MK_skipped;
 };

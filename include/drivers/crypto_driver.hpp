@@ -42,4 +42,10 @@ public:
   SecByteBlock HMAC_generate_key(const SecByteBlock &DH_shared_key);
   std::string HMAC_generate(SecByteBlock key, std::string ciphertext);
   bool HMAC_verify(SecByteBlock key, std::string ciphertext, std::string hmac);
+
+  std::pair<SecByteBlock, SecByteBlock> CryptoDriver::KDF_RK(SecByteBlock rk, SecByteBlock dh_shared_key);
+  std::pair<SecByteBlock, SecByteBlock> CryptoDriver::KDF_CK(SecByteBlock ck);
+
+  SecByteBlock make_header(std::pair<SecByteBlock, SecByteBlock> dh_pair, CryptoPP::Integer pn, CryptoPP::Integer n);
+  SecByteBlock concat_ad_header(SecByteBlock ad, SecByteBlock header);
 };
