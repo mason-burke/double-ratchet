@@ -16,7 +16,6 @@ using namespace CryptoPP;
  * @return `DHParams_Message` object that stores Diffie-Hellman parameters
  */
 DHParams_Message CryptoDriver::DH_generate_params() {
-  // TODO: test
   CryptoPP::AutoSeededRandomPool prng;
   CryptoPP::PrimeAndGenerator pg;
   CryptoPP::Integer p, q, g;
@@ -43,7 +42,6 @@ DHParams_Message CryptoDriver::DH_generate_params() {
  */
 std::tuple<DH, SecByteBlock, SecByteBlock>
 CryptoDriver::DH_initialize(const DHParams_Message &DH_params) {
-  // TODO: test
   CryptoPP::DH dh(DH_params.p, DH_params.q, DH_params.g);
   CryptoPP::SecByteBlock sk(dh.PrivateKeyLength());
   CryptoPP::SecByteBlock pk(dh.PublicKeyLength());
@@ -76,25 +74,6 @@ SecByteBlock CryptoDriver::DH_generate_shared_key(
   return sharedKey;
 }
 
-/**
- * @brief Generates AES key using HKDR with a salt. This function should
- * 1) Allocate a `SecByteBlock` of size `AES::DEFAULT_KEYLENGTH`.
- * 2) Use a `HKDF<SHA256>` to derive and return a key for AES using the provided
- * salt. See the `DeriveKey` function.
- * 3) Important tip: use .size() on a SecByteBlock instead of sizeof()
- * @param DH_shared_key Diffie-Hellman shared key
- * @return AES key
- */
-SecByteBlock CryptoDriver::AES_generate_key(const SecByteBlock &DH_shared_key) {
-  std::string aes_salt_str("salt0000");
-  SecByteBlock aes_salt((const unsigned char *)(aes_salt_str.data()),
-                        aes_salt_str.size());
-  CryptoPP::SecByteBlock AESKey(AES::DEFAULT_KEYLENGTH);
-  CryptoPP::HKDF<SHA256> builder;
-  builder.DeriveKey(AESKey, AES::DEFAULT_KEYLENGTH, DH_shared_key, DH_shared_key.size(), aes_salt, aes_salt.size(), nullptr, 0);
-
-  return AESKey;
-}
 
 /**
  * @brief Encrypts the given plaintext. This function should:
@@ -109,16 +88,25 @@ SecByteBlock CryptoDriver::AES_generate_key(const SecByteBlock &DH_shared_key) {
  * @param plaintext text to encrypt
  * @return Pair of ciphertext and iv
  */
-std::pair<std::string, SecByteBlock>
-CryptoDriver::AES_encrypt(SecByteBlock key, std::string plaintext) {
+std::string CryptoDriver::encrypt_and_tag(SecByteBlock mk, std::string plaintext, std::string associated_data) {
   try {
+    CryptoPP::HKDF<SHA256> builder;
+
+    CryptoPP::SecByteBlock keys;
+    CryptoPP::SecByteBlock zeros;
+    zeros.CleanNew(80);
+
+    builder.DeriveKey(keys, 80, mk, mk.size(), zeros, zeros.size(), nullptr, 0);
+
+    SecByteBlock encryption_key = SecByteBlock(keys.begin(), 32);
+    SecByteBlock authentication_key = SecByteBlock(keys.begin() + 32, 32);
+    SecByteBlock iv = SecByteBlock(keys.begin() + 64, 16);
+
+
     CryptoPP::CBC_Mode<AES>::Encryption AES_encryptor;
-    CryptoPP::AutoSeededRandomPool prng;
-    CryptoPP::SecByteBlock iv(AES::BLOCKSIZE);
     std::string ciphertext;
 
-    AES_encryptor.GetNextIV(prng, iv);
-    AES_encryptor.SetKeyWithIV(key, key.size(), iv);
+    AES_encryptor.SetKeyWithIV(encryption_key, encryption_key.size(), iv);
     
     CryptoPP::StringSource ss(plaintext, true,
       new CryptoPP::StreamTransformationFilter(AES_encryptor,
@@ -126,7 +114,9 @@ CryptoDriver::AES_encrypt(SecByteBlock key, std::string plaintext) {
       )
     );
 
-    return std::pair<std::string, CryptoPP::SecByteBlock>(ciphertext, iv);
+    std::string hmac = HMAC_generate(authentication_key, plaintext + associated_data);
+
+    return ciphertext + hmac;
 
   } catch (CryptoPP::Exception &e) {
     std::cerr << e.what() << std::endl;
@@ -149,13 +139,14 @@ CryptoDriver::AES_encrypt(SecByteBlock key, std::string plaintext) {
  * @param ciphertext text to decrypt
  * @return decrypted message
  */
-std::string CryptoDriver::AES_decrypt(SecByteBlock key, SecByteBlock iv,
-                                      std::string ciphertext) {
+std::string CryptoDriver::decrypt_and_verify(SecByteBlock mk, std::string ciphertext, std::string associated_data) {
+  //todo: rework
   try {
     std::string plaintext;
     CryptoPP::CBC_Mode<AES>::Decryption AES_decryptor;
     
-    AES_decryptor.SetKeyWithIV(key, key.size(), iv);
+    //todo: figure out iv
+    AES_decryptor.SetKeyWithIV(mk, mk.size(), iv);
     StringSource s(ciphertext, true, 
       new StreamTransformationFilter(AES_decryptor,
           new StringSink(plaintext)
@@ -173,28 +164,6 @@ std::string CryptoDriver::AES_decrypt(SecByteBlock key, SecByteBlock iv,
 }
 
 /**
- * @brief Generates an HMAC key using HKDF with a salt. This function should
- * 1) Allocate a `SecByteBlock` of size `SHA256::BLOCKSIZE` for the shared key.
- * 2) Use a `HKDF<SHA256>` to derive and return a key for HMAC using the
- * provided salt. See the `DeriveKey` function.
- * 3) Important tip: use .size() on a SecByteBlock instead of sizeof()
- * @param DH_shared_key shared key from Diffie-Hellman
- * @return HMAC key
- */
-SecByteBlock
-CryptoDriver::HMAC_generate_key(const SecByteBlock &DH_shared_key) {
-  std::string hmac_salt_str("salt0001");
-  SecByteBlock hmac_salt((const unsigned char *)(hmac_salt_str.data()),
-                         hmac_salt_str.size());
-  CryptoPP::SecByteBlock HMACKey(SHA256::BLOCKSIZE);
-  CryptoPP::HKDF<SHA256> builder;
-
-  builder.DeriveKey(HMACKey, SHA256::BLOCKSIZE, DH_shared_key, DH_shared_key.size(), hmac_salt, hmac_salt.size(), nullptr, 0);
-
-  return HMACKey;
-}
-
-/**
  * @brief Given a ciphertext, generates an HMAC. This function should
  * 1) Initialize an HMAC<SHA256> with the provided key.
  * 2) Run the ciphertext through a `HashFilter` to generate an HMAC.
@@ -209,7 +178,7 @@ std::string CryptoDriver::HMAC_generate(SecByteBlock key,
     CryptoPP::HMAC<SHA256> builder(key, key.size());
     std::string mac;
 
-    StringSource ss(ciphertext, true, 
+    StringSource ss(ciphertext, true,
         new HashFilter(builder,
             new StringSink(mac)
         ) 
@@ -258,7 +227,12 @@ bool CryptoDriver::HMAC_verify(SecByteBlock key, std::string ciphertext,
  * @return pair of root key and chain key
 */
 std::pair<SecByteBlock, SecByteBlock> CryptoDriver::KDF_RK(SecByteBlock rk, SecByteBlock dh_shared_key) {
-  // todo: write
+  // todo: verify
+  CryptoPP::SecByteBlock keys(64);
+  CryptoPP::HKDF<SHA256> builder;
+  builder.DeriveKey(keys, AES::DEFAULT_KEYLENGTH, dh_shared_key, dh_shared_key.size(), rk, rk.size(), nullptr, 0);
+
+  return std::pair<SecByteBlock, SecByteBlock>(SecByteBlock(keys.begin(), 16), SecByteBlock(keys.begin() + 16, 16));
 }
 
 /**
@@ -268,7 +242,8 @@ std::pair<SecByteBlock, SecByteBlock> CryptoDriver::KDF_RK(SecByteBlock rk, SecB
  * @return pair of chain key and message key
 */
 std::pair<SecByteBlock, SecByteBlock> CryptoDriver::KDF_CK(SecByteBlock ck) {
-  // todo: write
+  //todo: verify
+  return std::pair<SecByteBlock, SecByteBlock>(string_to_byteblock(HMAC_generate(ck, "1")), string_to_byteblock(HMAC_generate(ck, "2")));
 }
 
 /**

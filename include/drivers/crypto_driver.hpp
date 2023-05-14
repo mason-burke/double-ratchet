@@ -34,10 +34,8 @@ public:
                          const SecByteBlock &DH_other_public_value);
 
   SecByteBlock AES_generate_key(const SecByteBlock &DH_shared_key);
-  std::pair<std::string, SecByteBlock> AES_encrypt(SecByteBlock key,
-                                                   std::string plaintext);
-  std::string AES_decrypt(SecByteBlock key, SecByteBlock iv,
-                          std::string ciphertext);
+  std::string encrypt_and_tag(SecByteBlock mk, std::string plaintext, std::string associated_data);
+  std::string decrypt_and_verify(SecByteBlock mk, std::string ciphertext, std::string associated_data);
 
   SecByteBlock HMAC_generate_key(const SecByteBlock &DH_shared_key);
   std::string HMAC_generate(SecByteBlock key, std::string ciphertext);

@@ -36,7 +36,6 @@ Client::Client(std::shared_ptr<NetworkDriver> network_driver,
 void Client::prepare_keys(CryptoPP::DH DH_obj,
                           CryptoPP::SecByteBlock DH_private_value,
                           CryptoPP::SecByteBlock DH_other_public_value) {
-  // TODO: test
   CryptoPP::SecByteBlock sharedKey = this->crypto_driver->DH_generate_shared_key(DH_obj, DH_private_value, DH_other_public_value);
   this->AES_key = this->crypto_driver->AES_generate_key(sharedKey);
   this->HMAC_key = this->crypto_driver->HMAC_generate_key(sharedKey);
