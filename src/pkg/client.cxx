@@ -25,6 +25,19 @@ Client::Client(std::shared_ptr<NetworkDriver> network_driver,
   this->cli_driver = std::make_shared<CLIDriver>();
   this->crypto_driver = crypto_driver;
   this->network_driver = network_driver;
+
+
+  // Double Ratchet
+  // Other values should be init based on if you are alice/bob (first sender/reciever)
+
+  this->PN = 0;
+  this->Nr = 0;
+  this->Ns = 0;
+
+  std::vector<SecByteBlock> CKr;
+  this->CKr = CKr;
+  std::map<SecByteBlock, SecByteBlock> MKSKIPPED;
+  this->MK_skipped = MKSKIPPED;
 }
 
 /**
