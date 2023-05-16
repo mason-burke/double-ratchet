@@ -86,9 +86,9 @@ SecByteBlock CryptoDriver::DH_generate_shared_key(
  * 4) Important tip: use .size() on a SecByteBlock instead of sizeof()
  * @param key AES key
  * @param plaintext text to encrypt
- * @return Pair of ciphertext and iv
+ * @return message
  */
-std::string CryptoDriver::encrypt_and_tag(SecByteBlock mk, std::string plaintext, std::string associated_data) {
+Message_Message CryptoDriver::encrypt_and_tag(SecByteBlock mk, std::string plaintext, std::string associated_data) {
   try {
     CryptoPP::HKDF<SHA256> builder;
 
@@ -114,9 +114,14 @@ std::string CryptoDriver::encrypt_and_tag(SecByteBlock mk, std::string plaintext
       )
     );
 
-    std::string hmac = HMAC_generate(authentication_key, plaintext + associated_data);
+    std::string hmac = HMAC_generate(authentication_key, ciphertext + associated_data);
 
-    return ciphertext + hmac;
+    Message_Message msg;
+    msg.ciphertext = ciphertext;
+    msg.iv = iv;
+    msg.mac = hmac;
+
+    return msg;
 
   } catch (CryptoPP::Exception &e) {
     std::cerr << e.what() << std::endl;
@@ -134,20 +139,24 @@ std::string CryptoDriver::encrypt_and_tag(SecByteBlock mk, std::string plaintext
  * using `AES_decryptor`.
  * 3) Return the plaintext or throw a `std::runtime_error`.
  * 4) Important tip: use .size() on a SecByteBlock instead of sizeof()
- * @param key AES key
+ * @param mk message key
+ * @param ciphertext_data text to decrypt (vectorized)
  * @param iv iv used in encryption
- * @param ciphertext text to decrypt
+ * @param associated_data
  * @return decrypted message
  */
-std::string CryptoDriver::decrypt_and_verify(SecByteBlock mk, std::string ciphertext, std::string associated_data) {
-  //todo: rework
+std::string CryptoDriver::decrypt_and_verify(SecByteBlock mk, Message_Message ciphertext) {
   try {
+    //todo: figure out what key to use here! should be authentication key but i'm unsure as to how one would derive it
+    if (!HMAC_verify(mk, ciphertext.ciphertext + ciphertext.header.ad, ciphertext.mac)) {
+      throw std::runtime_error("Invalid mac.");
+    }
+    
     std::string plaintext;
     CryptoPP::CBC_Mode<AES>::Decryption AES_decryptor;
     
-    //todo: figure out iv
-    AES_decryptor.SetKeyWithIV(mk, mk.size(), iv);
-    StringSource s(ciphertext, true, 
+    AES_decryptor.SetKeyWithIV(mk, mk.size(), ciphertext.iv);
+    StringSource s(ciphertext.ciphertext, true, 
       new StreamTransformationFilter(AES_decryptor,
           new StringSink(plaintext)
       )
@@ -252,19 +261,15 @@ std::pair<SecByteBlock, SecByteBlock> CryptoDriver::KDF_CK(SecByteBlock ck) {
  * @param dh_pair Diffie-Hellman ratchet pair
  * @param pn previous chain length
  * @param n message number
+ * @param associated_data any associated data one might want to attach
  * @return The returned header object contains ratchet public key dh and integers pn and n.
 */
-SecByteBlock make_header(std::pair<SecByteBlock, SecByteBlock> dh_pair, CryptoPP::Integer pn, CryptoPP::Integer n) {
-  // todo: write
-}
+Header make_header(std::pair<SecByteBlock, SecByteBlock> dh_pair, CryptoPP::Integer pn, CryptoPP::Integer n, std::string associated_data) {
+  Header header;
+  header.DHr = dh_pair.second;
+  header.PN = pn;
+  header.N = n;
+  header.ad = associated_data;
 
-/**
- * @brief Encodes a message header into a parseable byte sequence, prepends the ad byte sequence,
- * and returns the result. If ad is not guaranteed to be a parseable byte sequence, a length value
- * should be prepended to the output to ensure that the output is parseable as a unique pair (ad, header).
- * @param ad ad byte sequence //todo: figure out what this is
- * @param header message header, output of make_header
-*/
-SecByteBlock concat_ad_header(SecByteBlock ad, SecByteBlock header) {
-  // todo: write
+  return header;
 }

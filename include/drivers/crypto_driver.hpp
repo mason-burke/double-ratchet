@@ -34,8 +34,8 @@ public:
                          const SecByteBlock &DH_other_public_value);
 
   SecByteBlock AES_generate_key(const SecByteBlock &DH_shared_key);
-  std::string encrypt_and_tag(SecByteBlock mk, std::string plaintext, std::string associated_data);
-  std::string decrypt_and_verify(SecByteBlock mk, std::string ciphertext, std::string associated_data);
+  Message_Message encrypt_and_tag(SecByteBlock mk, std::string plaintext, std::string associated_data);
+  std::string decrypt_and_verify(SecByteBlock mk, Message_Message ciphertext);
 
   SecByteBlock HMAC_generate_key(const SecByteBlock &DH_shared_key);
   std::string HMAC_generate(SecByteBlock key, std::string ciphertext);
@@ -44,6 +44,5 @@ public:
   std::pair<SecByteBlock, SecByteBlock> CryptoDriver::KDF_RK(SecByteBlock rk, SecByteBlock dh_shared_key);
   std::pair<SecByteBlock, SecByteBlock> CryptoDriver::KDF_CK(SecByteBlock ck);
 
-  SecByteBlock make_header(std::pair<SecByteBlock, SecByteBlock> dh_pair, CryptoPP::Integer pn, CryptoPP::Integer n);
-  SecByteBlock concat_ad_header(SecByteBlock ad, SecByteBlock header);
+  std::string make_header(std::pair<SecByteBlock, SecByteBlock> dh_pair, CryptoPP::Integer pn, CryptoPP::Integer n, std::string associated_data);
 };

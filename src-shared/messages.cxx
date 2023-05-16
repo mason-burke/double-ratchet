@@ -134,8 +134,10 @@ void Message_Message::serialize(std::vector<unsigned char> &data) {
   // Add fields.
   std::string iv = byteblock_to_string(this->iv);
   put_string(iv, data);
-  std::string public_integer = byteblock_to_string(this->public_value);
-  put_string(public_integer, data);
+  put_string(byteblock_to_string(this->header.DHr), data);
+  put_integer(this->header.N, data);
+  put_integer(this->header.PN, data);
+  put_string(this->header.ad, data);
   put_string(this->ciphertext, data);
   put_string(this->mac, data);
 }
@@ -152,9 +154,12 @@ int Message_Message::deserialize(std::vector<unsigned char> &data) {
   std::string iv;
   n += get_string(&iv, data, n);
   this->iv = string_to_byteblock(iv);
-  std::string public_integer;
-  n += get_string(&public_integer, data, n);
-  this->public_value = string_to_byteblock(public_integer);
+  std::string DHr;
+  n += get_string(&DHr, data, n);
+  this->header.DHr = string_to_byteblock(DHr);
+  n += get_integer(&this->header.N, data, n);
+  n += get_integer(&this->header.PN, data, n);
+  n += get_string(&this->header.ad, data, n);
   n += get_string(&this->ciphertext, data, n);
   n += get_string(&this->mac, data, n);
   return n;

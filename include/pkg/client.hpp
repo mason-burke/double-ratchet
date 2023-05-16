@@ -29,6 +29,9 @@ public:
   std::pair<std::string, bool> receive(Message_Message ciphertext);
   void run(std::string command);
   void HandleKeyExchange(std::string command);
+  std::pair<std::string, bool> try_skipped_message_keys(Message_Message ciphertext);
+  void skip_message_keys(CryptoPP::Integer until);
+  void dh_ratchet(Header header);
 
 private:
   void ReceiveThread();
@@ -40,21 +43,23 @@ private:
   std::shared_ptr<CryptoDriver> crypto_driver;
   std::shared_ptr<NetworkDriver> network_driver;
 
-  SecByteBlock AES_key;
-  SecByteBlock HMAC_key;
-
-  // DH Ratchet Fields
+  // DH Fields
   DHParams_Message DH_params;
+  DH dh;
 
   // Double Ratchet
+  // ratchet keypair (sending/self)
+  std::pair<SecByteBlock, SecByteBlock> DHs;
+  // ratchet public key (received)
+  SecByteBlock DHr;
   // root key
   SecByteBlock RK;
-  // chain keys for sending
+  // chain key for sending
   SecByteBlock CKs;
+  // chain key for receiving
+  SecByteBlock CKr;
   // message number for sending
   CryptoPP::Integer Ns;
-  // chain keys for receiving
-  std::vector<SecByteBlock> CKr;
   // message number for sending
   CryptoPP::Integer Nr;
   // number of messages in previous sending chain

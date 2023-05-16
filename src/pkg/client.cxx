@@ -34,8 +34,9 @@ Client::Client(std::shared_ptr<NetworkDriver> network_driver,
   this->Nr = 0;
   this->Ns = 0;
 
-  std::vector<SecByteBlock> CKr;
+  SecByteBlock CKr;
   this->CKr = CKr;
+  
   std::map<SecByteBlock, SecByteBlock> MKSKIPPED;
   this->MK_skipped = MKSKIPPED;
 }
@@ -65,31 +66,14 @@ Message_Message Client::send(std::string plaintext) {
   // Lock will automatically release at the end of the function.
   std::unique_lock<std::mutex> lck(this->mtx);
 
-  if (this->DH_switched) {
-    std::tuple<CryptoPP::DH, CryptoPP::SecByteBlock, CryptoPP::SecByteBlock> initResult = this->crypto_driver->DH_initialize(this->DH_params);
-    CryptoPP::DH dh_obj = std::get<0>(initResult);
-    CryptoPP::SecByteBlock sk = std::get<1>(initResult);
-    CryptoPP::SecByteBlock pk = std::get<2>(initResult);
+  auto keygen = this->crypto_driver->KDF_CK(this->CKs);
+  this->CKs = keygen.first;
+  SecByteBlock mk = keygen.second;
+  std::string header = this->crypto_driver->make_header(this->DHs, this->PN, this->Ns);
 
-    this->prepare_keys(dh_obj, sk, this->DH_last_other_public_value);
-    this->DH_current_private_value = sk;
-    this->DH_current_public_value = pk;
-    this->DH_switched = false;
-  }
-
-  std::pair<std::string, CryptoPP::SecByteBlock> result = this->crypto_driver->AES_encrypt(this->AES_key, plaintext);
-  std::string ciphertext = result.first;
-  CryptoPP::SecByteBlock iv = result.second;
-
-  std::string mac = this->crypto_driver->HMAC_generate(this->HMAC_key, concat_msg_fields(iv, this->DH_current_public_value, ciphertext));
-
-  Message_Message msg;
-  msg.iv = iv;
-  msg.public_value = this->DH_current_public_value;
-  msg.ciphertext = ciphertext;
-  msg.mac = mac;
-
-  return msg;
+  this->Ns += 1;
+  // todo: make both into SecByteBlocks (add back in associated data!)
+  return this->crypto_driver->encrypt_and_tag(mk, plaintext, header);// + associated_data)
 }
 
 /**
@@ -103,19 +87,73 @@ std::pair<std::string, bool> Client::receive(Message_Message ciphertext) {
   // Lock will automatically release at the end of the function.
   std::unique_lock<std::mutex> lck(this->mtx);
 
-  if (ciphertext.public_value != this->DH_last_other_public_value) { // || !this->DH_switched
-    std::tuple<CryptoPP::DH, CryptoPP::SecByteBlock, CryptoPP::SecByteBlock> initResult = this->crypto_driver->DH_initialize(this->DH_params);
-    CryptoPP::DH dh_obj = std::get<0>(initResult);
-    this->prepare_keys(dh_obj, this->DH_current_private_value, ciphertext.public_value);
-    this->DH_last_other_public_value = ciphertext.public_value;
-    this->DH_switched = true;
+  auto attempt_1 = try_skipped_message_keys(ciphertext);
+  if (attempt_1.second) {
+    return std::pair<std::string, bool>(attempt_1.first, true);
   }
 
-  std::string decrypted = this->crypto_driver->AES_decrypt(this->AES_key, ciphertext.iv, ciphertext.ciphertext);
-  bool authentic = this->crypto_driver->HMAC_verify(this->HMAC_key, concat_msg_fields(ciphertext.iv, ciphertext.public_value, ciphertext.ciphertext), ciphertext.mac);
+  if (ciphertext.header.DHr != this->DHr) {
+    skip_message_keys(ciphertext.header.PN);
+    dh_ratchet(ciphertext.header);
+  }
+  
+  skip_message_keys(ciphertext.header.N);
 
-  return std::pair<std::string, bool>(decrypted, authentic);
+  auto keygen = this->crypto_driver->KDF_CK(this->CKr);
+  this->CKs = keygen.first;
+  SecByteBlock mk = keygen.second;
+
+  this->Nr += 1;
+  return std::make_pair(this->crypto_driver->decrypt_and_verify(mk, ciphertext), true);
 }
+
+// see if the message is out of order, and try to decrypt it if possible
+std::pair<std::string, bool> Client::try_skipped_message_keys(Message_Message ciphertext) {
+  // concat blocks for ease of lookup, surely this won't go wrong
+  SecByteBlock map_key = ciphertext.header.DHr + integer_to_byteblock(ciphertext.header.N);
+  if (this->MK_skipped.count(map_key) > 0) {
+    auto mk = MK_skipped[map_key];
+    MK_skipped.erase(map_key);
+    return std::make_pair(this->crypto_driver->decrypt_and_verify(mk, ciphertext), true); 
+  }
+  return std::make_pair("", false);
+}
+
+// skip over message keys to catch up to current, storing the old ones in case of out-of-order messages
+void Client::skip_message_keys(CryptoPP::Integer until) {
+  // max number of skipped messages, pick like 10 for now
+  if (this->Nr + 10 < until) {
+    throw std::runtime_error("max_skipped too high.");
+  }
+
+  if (!this->CKr.empty()) {
+    while (this->Nr < until) {
+      auto keygen = this->crypto_driver->KDF_CK(this->CKr);
+      this->CKr = keygen.first;
+      this->MK_skipped[this->DHr + integer_to_byteblock(this->Nr)] = keygen.second;
+      this->Nr += 1;
+    }
+  }
+}
+
+// ratchet!
+void Client::dh_ratchet(Header header) {
+  this->PN = this->Ns;
+  this->Ns = 0;
+  this->Nr = 0;
+  this->DHr = header.DHr;
+  auto dh_1 = this->crypto_driver->DH_initialize(this->DH_params);
+  auto keys_1 = this->crypto_driver->KDF_RK(this->RK, this->crypto_driver->DH_generate_shared_key(std::get<0>(dh_1), this->DHs.first, this->DHr));
+  this->RK = keys_1.first;
+  this->CKr = keys_1.second;
+  auto dh_2 = this->crypto_driver->DH_initialize(this->DH_params);
+  this->DHs = std::make_pair(std::get<1>(dh_2), std::get<2>(dh_2));
+  auto keys_2 = this->crypto_driver->KDF_RK(this->RK, this->crypto_driver->DH_generate_shared_key(std::get<0>(dh_1), this->DHs.first, this->DHr));
+  this->RK = keys_2.first;
+  this->CKs = keys_2.second;
+}
+
+
 
 /**
  * Run the client.
@@ -176,11 +214,6 @@ void Client::HandleKeyExchange(std::string command) {
   opvm.deserialize(otherPublicValData);
   
   this->prepare_keys(dh_obj, sk, opvm.public_value);
-  this->DH_params = dhParams;
-  this->DH_switched = true;
-  this->DH_current_private_value = sk;
-  this->DH_current_public_value = pk;
-  this->DH_last_other_public_value = opvm.public_value;
 }
 
 /**
