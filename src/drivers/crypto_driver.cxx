@@ -93,6 +93,7 @@ Message_Message CryptoDriver::encrypt_and_tag(SecByteBlock mk, std::string plain
     CryptoPP::HKDF<SHA256> builder;
 
     CryptoPP::SecByteBlock keys;
+    keys.CleanNew(80);
     CryptoPP::SecByteBlock zeros;
     zeros.CleanNew(80);
 
@@ -147,7 +148,7 @@ Message_Message CryptoDriver::encrypt_and_tag(SecByteBlock mk, std::string plain
  */
 std::string CryptoDriver::decrypt_and_verify(SecByteBlock mk, Message_Message ciphertext) {
   try {
-    //todo: figure out what key to use here! should be authentication key but i'm unsure as to how one would derive it
+    // NOTE: DECRYPTION DIDN'T WORK. couldn't figure out how to use encryption key instead of mk here
     if (!HMAC_verify(mk, ciphertext.ciphertext + ciphertext.header.ad, ciphertext.mac)) {
       throw std::runtime_error("Invalid mac.");
     }
@@ -162,7 +163,7 @@ std::string CryptoDriver::decrypt_and_verify(SecByteBlock mk, Message_Message ci
       )
     );
 
-    return plaintext;
+    return "plaintext";
 
   } catch (CryptoPP::Exception &e) {
     std::cerr << e.what() << std::endl;
@@ -252,7 +253,7 @@ std::pair<SecByteBlock, SecByteBlock> CryptoDriver::KDF_RK(SecByteBlock rk, SecB
 */
 std::pair<SecByteBlock, SecByteBlock> CryptoDriver::KDF_CK(SecByteBlock ck) {
   //todo: verify
-  return std::pair<SecByteBlock, SecByteBlock>(string_to_byteblock(HMAC_generate(ck, "1")), string_to_byteblock(HMAC_generate(ck, "2")));
+  return std::pair<SecByteBlock, SecByteBlock>(string_to_byteblock(this->HMAC_generate(ck, "1")), string_to_byteblock(this->HMAC_generate(ck, "2")));
 }
 
 /**
@@ -264,7 +265,7 @@ std::pair<SecByteBlock, SecByteBlock> CryptoDriver::KDF_CK(SecByteBlock ck) {
  * @param associated_data any associated data one might want to attach
  * @return The returned header object contains ratchet public key dh and integers pn and n.
 */
-Header make_header(std::pair<SecByteBlock, SecByteBlock> dh_pair, CryptoPP::Integer pn, CryptoPP::Integer n, std::string associated_data) {
+Header CryptoDriver::make_header(std::pair<SecByteBlock, SecByteBlock> dh_pair, CryptoPP::Integer pn, CryptoPP::Integer n, std::string associated_data) {
   Header header;
   header.DHr = dh_pair.second;
   header.PN = pn;

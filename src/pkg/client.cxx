@@ -41,11 +41,11 @@ Message_Message Client::send(std::string plaintext) {
   auto keygen = this->crypto_driver->KDF_CK(this->CKs);
   this->CKs = keygen.first;
   SecByteBlock mk = keygen.second;
-  std::string header = this->crypto_driver->make_header(this->DHs, this->PN, this->Ns, "");
+  Header header = this->crypto_driver->make_header(this->DHs, this->PN, this->Ns, "");
 
   this->Ns += 1;
   // todo: make both into SecByteBlocks (add back in associated data!)
-  return this->crypto_driver->encrypt_and_tag(mk, plaintext, header);// + associated_data)
+  return this->crypto_driver->encrypt_and_tag(mk, plaintext, header.ad);// + associated_data)
 }
 
 /**
@@ -82,7 +82,7 @@ std::pair<std::string, bool> Client::receive(Message_Message ciphertext) {
 // see if the message is out of order, and try to decrypt it if possible
 std::pair<std::string, bool> Client::try_skipped_message_keys(Message_Message ciphertext) {
   // concat blocks for ease of lookup, surely this won't go wrong
-  SecByteBlock map_key = ciphertext.header.DHr + integer_to_byteblock(ciphertext.header.N);
+  CryptoPP::Integer map_key = byteblock_to_integer(ciphertext.header.DHr + integer_to_byteblock(ciphertext.header.N));
   if (this->MK_skipped.count(map_key) > 0) {
     auto mk = MK_skipped[map_key];
     MK_skipped.erase(map_key);
@@ -102,7 +102,7 @@ void Client::skip_message_keys(CryptoPP::Integer until) {
     while (this->Nr < until) {
       auto keygen = this->crypto_driver->KDF_CK(this->CKr);
       this->CKr = keygen.first;
-      this->MK_skipped[this->DHr + integer_to_byteblock(this->Nr)] = keygen.second;
+      this->MK_skipped[byteblock_to_integer(this->DHr + integer_to_byteblock(this->Nr))] = keygen.second;
       this->Nr += 1;
     }
   }
@@ -207,7 +207,7 @@ void Client::HandleKeyExchange(std::string command) {
   this->Ns = 0;
   this->Nr = 0;
   this->PN = 0;
-  this->MK_skipped = std::map<SecByteBlock, SecByteBlock>();
+  this->MK_skipped = std::map<CryptoPP::Integer, SecByteBlock>();
 }
 
 /**

@@ -59,6 +59,13 @@ struct PublicValue_Message : public Serializable {
   int deserialize(std::vector<unsigned char> &data);
 };
 
+struct Header {
+  CryptoPP::SecByteBlock DHr;
+  CryptoPP::Integer PN;
+  CryptoPP::Integer N;
+  std::string ad;
+};
+
 struct Message_Message : public Serializable {
   CryptoPP::SecByteBlock iv;
   Header header;
@@ -67,11 +74,4 @@ struct Message_Message : public Serializable {
 
   void serialize(std::vector<unsigned char> &data);
   int deserialize(std::vector<unsigned char> &data);
-};
-
-struct Header {
-  SecByteBlock DHr;
-  CryptoPP::Integer PN;
-  CryptoPP::Integer N;
-  std::string ad;
 };

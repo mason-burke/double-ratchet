@@ -63,5 +63,5 @@ private:
   // dictionary of skipped-over message keys, indexed by ratchet public key 
   // and message number. Raises an exception if too many elements are stored.
   // should be double mapping, see 3.2
-  std::map<SecByteBlock, SecByteBlock> MK_skipped;
+  std::map<CryptoPP::Integer, SecByteBlock> MK_skipped;
 };
