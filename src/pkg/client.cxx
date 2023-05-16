@@ -25,34 +25,6 @@ Client::Client(std::shared_ptr<NetworkDriver> network_driver,
   this->cli_driver = std::make_shared<CLIDriver>();
   this->crypto_driver = crypto_driver;
   this->network_driver = network_driver;
-
-
-  // Double Ratchet
-  // Other values should be init based on if you are alice/bob (first sender/reciever)
-
-  this->PN = 0;
-  this->Nr = 0;
-  this->Ns = 0;
-
-  SecByteBlock CKr;
-  this->CKr = CKr;
-  
-  std::map<SecByteBlock, SecByteBlock> MKSKIPPED;
-  this->MK_skipped = MKSKIPPED;
-}
-
-/**
- * Generates a new DH secret and replaces the keys. This function should:
- * 1) Call DH_generate_shared_key
- * 2) Use the resulting key in AES_generate_key and HMAC_generate_key
- * 3) Update private key variables
- */
-void Client::prepare_keys(CryptoPP::DH DH_obj,
-                          CryptoPP::SecByteBlock DH_private_value,
-                          CryptoPP::SecByteBlock DH_other_public_value) {
-  CryptoPP::SecByteBlock sharedKey = this->crypto_driver->DH_generate_shared_key(DH_obj, DH_private_value, DH_other_public_value);
-  this->AES_key = this->crypto_driver->AES_generate_key(sharedKey);
-  this->HMAC_key = this->crypto_driver->HMAC_generate_key(sharedKey);
 }
 
 /**
@@ -69,7 +41,7 @@ Message_Message Client::send(std::string plaintext) {
   auto keygen = this->crypto_driver->KDF_CK(this->CKs);
   this->CKs = keygen.first;
   SecByteBlock mk = keygen.second;
-  std::string header = this->crypto_driver->make_header(this->DHs, this->PN, this->Ns);
+  std::string header = this->crypto_driver->make_header(this->DHs, this->PN, this->Ns, "");
 
   this->Ns += 1;
   // todo: make both into SecByteBlocks (add back in associated data!)
@@ -123,7 +95,7 @@ std::pair<std::string, bool> Client::try_skipped_message_keys(Message_Message ci
 void Client::skip_message_keys(CryptoPP::Integer until) {
   // max number of skipped messages, pick like 10 for now
   if (this->Nr + 10 < until) {
-    throw std::runtime_error("max_skipped too high.");
+    throw std::runtime_error("until too high.");
   }
 
   if (!this->CKr.empty()) {
@@ -195,6 +167,10 @@ void Client::HandleKeyExchange(std::string command) {
   } else if (command == "listen") {
     paramData = this->network_driver->read();
     dhParams.deserialize(paramData);
+
+    this->DHr = SecByteBlock();
+    this->CKs = SecByteBlock();
+
   } else throw std::runtime_error("Unsupported command.");
 
   std::tuple<CryptoPP::DH, CryptoPP::SecByteBlock, CryptoPP::SecByteBlock> initResult = this->crypto_driver->DH_initialize(dhParams);
@@ -213,7 +189,25 @@ void Client::HandleKeyExchange(std::string command) {
   PublicValue_Message opvm;
   opvm.deserialize(otherPublicValData);
   
-  this->prepare_keys(dh_obj, sk, opvm.public_value);
+  SecByteBlock shared_key = this->crypto_driver->DH_generate_shared_key(dh_obj, sk, opvm.public_value);
+
+  if (command == "connect") {
+    this->DHs = std::make_pair(sk, pk);
+    this->DHr = opvm.public_value;
+
+    auto keygen = this->crypto_driver->KDF_RK(shared_key, shared_key);
+    this->RK = keygen.first;
+    this->CKs = keygen.second;
+  } else if (command == "listen") {
+    this->DHs = std::make_pair(sk, pk);
+    this->RK = shared_key;
+  }
+
+  this->CKr = SecByteBlock();
+  this->Ns = 0;
+  this->Nr = 0;
+  this->PN = 0;
+  this->MK_skipped = std::map<SecByteBlock, SecByteBlock>();
 }
 
 /**
